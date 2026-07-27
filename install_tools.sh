@@ -180,7 +180,7 @@ if [[ "${INSTALL_PROJECTDISCOVERY}" == "true" ]]; then
     PD_TOOLS="subfinder,httpx,nuclei,dnsx,naabu,katana"
     if is_installed pdtm; then
         log "Using pdtm to fetch prebuilt binaries: ${PD_TOOLS}"
-        pdtm -i "${PD_TOOLS}" -install-dir "${BIN_DIR}" >> "${INSTALL_LOG}" 2>&1 \
+        pdtm -i "${PD_TOOLS}" -bp "${BIN_DIR}" >> "${INSTALL_LOG}" 2>&1 \
             || warn "pdtm 批量安装部分失败，请检查 ${INSTALL_LOG}"
         for t in subfinder httpx nuclei dnsx naabu katana; do
             is_installed "$t" && log "${t} installed successfully" || warn "${t} 未安装成功，回退编译"
