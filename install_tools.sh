@@ -211,7 +211,33 @@ fi
 
 # ---------- gobuster ----------
 if [[ "${INSTALL_GOBUSTER:-true}" == "true" ]]; then
-    install_tool_fast "gobuster" "OJ/gobuster" "gobuster" "github.com/OJ/gobuster/v3@latest"
+    log "尝试下载 gobuster 预编译二进制（OJ/gobuster）..."
+    
+    # 精准匹配官方 Linux_x86_64.tar.gz 格式
+    GOBUSTER_URL=$(curl -s https://api.github.com/repos/OJ/gobuster/releases/latest | grep "browser_download_url" | grep "Linux_x86_64.tar.gz" | cut -d '"' -f 4)
+    
+    if [ -n "$GOBUSTER_URL" ]; then
+        TMP_DIR=$(mktemp -d)
+        cd "$TMP_DIR"
+        
+        curl -sL "$GOBUSTER_URL" -o gobuster.tar.gz
+        tar -zxvf gobuster.tar.gz >> /dev/null 2>&1
+        
+        if [ -f "gobuster" ]; then
+            cp -f gobuster "${BIN_DIR}/gobuster" 2>/dev/null || sudo cp -f gobuster "${BIN_DIR}/gobuster"
+            chmod +x "${BIN_DIR}/gobuster"
+            log "gobuster 预编译二进制安装成功！"
+        else
+            warn "gobuster 解压后未找到二进制，回退到 go install"
+            go install github.com/OJ/gobuster/v3@latest
+        fi
+        
+        cd - > /dev/null
+        rm -rf "$TMP_DIR"
+    else
+        warn "gobuster: 未找到匹配的预编译二进制，回退到 go install 编译"
+        go install github.com/OJ/gobuster/v3@latest
+    fi
 fi
 
 # ---------- nmap (apt) ----------
