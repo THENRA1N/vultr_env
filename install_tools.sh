@@ -43,27 +43,9 @@ export GOFLAGS="${GOFLAGS:--p=1}"   # 限制编译并行度，避免小内存机
 export CGO_ENABLED=0
 
 log "===== tool installation started ====="
-
-# ---------- helper: low-memory swap safety net ----------
-ensure_swap_for_build() {
-    # 只有在没有 swap、且可用内存偏低时才建，避免大项目编译触发 OOM/换页抖动
-    local mem_avail_kb swap_total_kb
-    mem_avail_kb=$(awk '/MemAvailable/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
-    swap_total_kb=$(awk '/SwapTotal/{print $2}' /proc/meminfo 2>/dev/null || echo 0)
-
-    if (( swap_total_kb == 0 )) && (( mem_avail_kb < 1500000 )); then
-        log "内存较低且无 swap（MemAvailable=${mem_avail_kb}KB），创建 1G swapfile 以防编译期 OOM..."
-        if command -v fallocate &>/dev/null; then
-            fallocate -l 1G "${TOOLS_DIR}/swapfile" 2>/dev/null || dd if=/dev/zero of="${TOOLS_DIR}/swapfile" bs=1M count=1024 status=none
-        else
-            dd if=/dev/zero of="${TOOLS_DIR}/swapfile" bs=1M count=1024 status=none
-        fi
-        chmod 600 "${TOOLS_DIR}/swapfile"
-        mkswap "${TOOLS_DIR}/swapfile" >> "${INSTALL_LOG}" 2>&1 || true
-        swapon "${TOOLS_DIR}/swapfile" >> "${INSTALL_LOG}" 2>&1 || warn "无法启用 swap（可能需要 root 权限），如果编译 OOM 请手动创建 swap"
-    fi
-}
-ensure_swap_for_build
+# 注：swap 由 bootstrap.sh 统一创建和管理（/swapfile），这里不再重复处理，
+# 避免出现两个不同路径的 swapfile。如果单独运行本脚本（没走 bootstrap.sh），
+# 请自行确保已有 swap，否则低内存机器上回退编译时可能 OOM。
 
 # ---------- helper: check + link ----------
 is_installed() {
@@ -171,7 +153,7 @@ install_go_tool() {
         link_bin "${GOBIN}/${name}" "${name}"
         log "${name} installed successfully"
     else
-        err "Failed to install ${name}. Check ${INSTALL_LOG}"
+        soft_err "Failed to install ${name}. Check ${INSTALL_LOG}"
     fi
 }
 
@@ -238,7 +220,7 @@ if [[ "${INSTALL_NMAP:-true}" == "true" ]]; then
     else
         log "Installing nmap via apt..."
         apt-get install -y -qq nmap >> "${INSTALL_LOG}" 2>&1 \
-            || err "Failed to install nmap"
+            || soft_err "Failed to install nmap"
         log "nmap installed successfully"
     fi
 fi
@@ -266,7 +248,7 @@ if [[ "${INSTALL_ONEFORALL}" == "true" ]]; then
     else
         log "Cloning OneForAll..."
         git clone --depth 1 https://github.com/shmilylty/OneForAll.git "${OFA_DIR}" \
-            >> "${INSTALL_LOG}" 2>&1 || err "Failed to clone OneForAll"
+            >> "${INSTALL_LOG}" 2>&1 || soft_err "Failed to clone OneForAll"
     fi
     log "Installing OneForAll Python dependencies..."
     cd "${OFA_DIR}"
@@ -290,7 +272,7 @@ if [[ "${INSTALL_DIRSEARCH}" == "true" ]]; then
     else
         log "Cloning dirsearch..."
         git clone --depth 1 https://github.com/maurosoria/dirsearch.git "${DS_DIR}" \
-            >> "${INSTALL_LOG}" 2>&1 || err "Failed to clone dirsearch"
+            >> "${INSTALL_LOG}" 2>&1 || soft_err "Failed to clone dirsearch"
     fi
     cat > "${BIN_DIR}/dirsearch" <<EOF
 #!/bin/bash
