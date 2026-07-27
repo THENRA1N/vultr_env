@@ -72,6 +72,28 @@ fi
 # ---------- system tuning ----------
 log "Applying system tuning..."
 
+# ---------- create swap if memory is low ----------
+# Useful for 1GB VPS when compiling Go tools
+if [[ ! -f /swapfile ]]; then
+    TOTAL_MEM_MB=$(free -m | awk '/^Mem:/{print $2}')
+    if [[ "${TOTAL_MEM_MB}" -le 1200 ]]; then
+        log "Low memory detected (${TOTAL_MEM_MB}MB), creating 1G swap..."
+        fallocate -l 1G /swapfile
+        chmod 600 /swapfile
+        mkswap /swapfile
+        swapon /swapfile
+        # Make it permanent
+        if ! grep -q '/swapfile' /etc/fstab; then
+            echo '/swapfile none swap sw 0 0' >> /etc/fstab
+        fi
+        log "Swap created and enabled"
+    else
+        log "Memory > 1.2GB, skip swap creation"
+    fi
+else
+    log "Swapfile already exists, skipping"
+fi
+
 # File descriptors
 cat > /etc/security/limits.d/99-security.conf <<EOF
 * soft nofile 65535
