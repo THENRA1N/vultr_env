@@ -8,6 +8,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=config.sh
 source "${SCRIPT_DIR}/config.sh"
+# Use disk-backed temp dir (tmpfs /tmp is too small on 1GB VPS)
+mkdir -p "${TOOLS_DIR}/tmp"
+export TMPDIR="${TOOLS_DIR}/tmp"
+export GOTMPDIR="${TOOLS_DIR}/tmp"
 
 mkdir -p "${LOG_DIR}" "${BIN_DIR}" "${GOBIN}"
 touch "${INSTALL_LOG}"
@@ -69,7 +73,22 @@ if [[ "${INSTALL_PROJECTDISCOVERY}" == "true" ]]; then
         fi
     fi
 fi
+# ---------- gobuster ----------
+if [[ "${INSTALL_GOBUSTER:-true}" == "true" ]]; then
+    install_go_tool "gobuster" "github.com/OJ/gobuster/v3@latest"
+fi
 
+# ---------- nmap (apt) ----------
+if [[ "${INSTALL_NMAP:-true}" == "true" ]]; then
+    if is_installed nmap; then
+        log "nmap already installed, skipping"
+    else
+        log "Installing nmap via apt..."
+        apt-get install -y -qq nmap >> "${INSTALL_LOG}" 2>&1 \
+            || err "Failed to install nmap"
+        log "nmap installed successfully"
+    fi
+fi
 # ---------- ffuf ----------
 if [[ "${INSTALL_FFUF}" == "true" ]]; then
     install_go_tool "ffuf" "github.com/ffuf/ffuf/v2@latest"
@@ -167,7 +186,7 @@ echo "BIN_DIR   : ${BIN_DIR}"
 echo "LOG       : ${INSTALL_LOG}"
 echo
 echo "Installed tools (version check):"
-for t in subfinder httpx nuclei dnsx naabu katana ffuf gau waybackurls; do
+for t in subfinder httpx nuclei dnsx naabu katana ffuf gau waybackurls gobuster nmap; do
     if is_installed "$t"; then
         ver=$($t -version 2>/dev/null || $t --version 2>/dev/null || echo "ok")
         printf "  %-14s %s\n" "$t" "$ver"
