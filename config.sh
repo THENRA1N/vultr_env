@@ -12,6 +12,8 @@ LOG_DIR="${TOOLS_DIR}/logs"
 INSTALL_LOG="${LOG_DIR}/install.log"
 
 # Go environment
+# HOME 在 cloud-init / 部分非交互环境下可能未设置，做个 fallback
+export HOME="${HOME:-/root}"
 export GOPATH="${HOME}/go"
 export GOBIN="${GOPATH}/bin"
 GO_BIN="${GOBIN}"
