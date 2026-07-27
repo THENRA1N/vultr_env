@@ -5,6 +5,10 @@
 # ============================================================
 set -euo pipefail
 
+# cloud-init 执行启动脚本时环境很"干净"，$HOME 经常是未定义的；
+# 下游 config.sh 用了 set -u，遇到未定义的 ${HOME} 会直接报错退出。
+export HOME="${HOME:-/root}"
+
 # 把所有输出同时写到本地日志文件 + 标准输出（后者会进 Vultr/cloud-init 的
 # console log，出问题时用 vultr-cli / 控制台 console log 或
 # /var/log/vps-startup.log 就能看到具体卡在哪一步，不用再靠猜）
