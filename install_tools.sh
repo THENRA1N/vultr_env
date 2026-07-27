@@ -182,6 +182,7 @@ if [[ "${INSTALL_PROJECTDISCOVERY}" == "true" ]]; then
         log "Using pdtm to fetch prebuilt binaries: ${PD_TOOLS}"
         pdtm -i "${PD_TOOLS}" >> "${INSTALL_LOG}" 2>&1 \
             || warn "pdtm 批量安装部分失败，请检查 ${INSTALL_LOG}"
+        export PATH="$HOME/.pdtm/go/bin:$PATH"
         for t in subfinder httpx nuclei dnsx naabu katana; do
             is_installed "$t" && log "${t} installed successfully" || warn "${t} 未安装成功，回退编译"
             is_installed "$t" || install_go_tool "$t" "github.com/projectdiscovery/${t}/v2/cmd/${t}@latest"
