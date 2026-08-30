@@ -45,6 +45,7 @@ INSTALL_WAYBACKURLS="true"
 INSTALL_ONEFORALL="true"
 INSTALL_DIRSEARCH="true"
 INSTALL_GODNS="false"          # Multiple repos exist; default skip
+INSTALL_GOST="true"          # Lightweight HTTP/SOCKS5 proxy
 
 # Base packages (apt)
 BASE_PACKAGES="git curl wget unzip file vim tmux jq python3 python3-pip python3-venv golang-go gcc make dnsutils net-tools ca-certificates"
