@@ -209,6 +209,137 @@ if [[ "${INSTALL_PROJECTDISCOVERY}" == "true" ]]; then
     fi
 fi
 
+# ============================================================
+# GOST - Lightweight HTTP/SOCKS5 Proxy
+# Default port: 8964
+# Password: random 8-char alphanumeric
+# ============================================================
+
+install_gost() {
+    log "Installing GOST..."
+
+    local GOST_VERSION="${GOST_VERSION:-v3.2.6}"
+    local GOST_REPO="go-gost/gost"
+    local GOST_BIN="${BIN_DIR}/gost"
+
+    if command -v install_tool_fast >/dev/null 2>&1; then
+        if install_tool_fast \
+            "gost" \
+            "${GOST_REPO}" \
+            "gost" \
+            "github.com/go-gost/gost/cmd/gost@${GOST_VERSION}"; then
+
+            if [[ -x "${GOST_BIN}" ]] || command -v gost >/dev/null 2>&1; then
+                log "GOST installed successfully."
+                return 0
+            fi
+        fi
+    fi
+
+    if command -v go >/dev/null 2>&1; then
+        log "GitHub binary installation failed, trying go install..."
+
+        if GOPROXY="${GOPROXY:-https://proxy.golang.org,direct}" \
+            go install "github.com/go-gost/gost/cmd/gost@${GOST_VERSION}"; then
+
+            local GO_GOST_BIN
+            GO_GOST_BIN="$(go env GOPATH)/bin/gost"
+
+            if [[ -x "${GO_GOST_BIN}" ]]; then
+                install -m 0755 "${GO_GOST_BIN}" "${GOST_BIN}"
+            fi
+
+            if [[ -x "${GOST_BIN}" ]]; then
+                log "GOST installed successfully via go install."
+                return 0
+            fi
+        fi
+    fi
+
+    soft_err "Failed to install GOST."
+    return 1
+}
+
+
+# ============================================================
+# Start GOST HTTP + SOCKS5 Proxy
+# ============================================================
+
+setup_gost_proxy() {
+    local PROXY_PORT="8964"
+    local PROXY_USER="proxy"
+    local CREDENTIAL_FILE="/root/.gost_proxy_credentials"
+    local SERVICE_FILE="/etc/systemd/system/gost-proxy.service"
+
+    # Generate random 8-character alphanumeric password
+    local PROXY_PASS
+    PROXY_PASS="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 8)"
+
+    if [[ "${#PROXY_PASS}" -ne 8 ]]; then
+        soft_err "Failed to generate GOST proxy password."
+        return 1
+    fi
+
+    # Save credentials
+    umask 077
+
+    cat > "${CREDENTIAL_FILE}" <<EOF
+GOST HTTP + SOCKS5 Proxy
+Host: $(hostname -I | awk '{print $1}')
+Port: ${PROXY_PORT}
+Username: ${PROXY_USER}
+Password: ${PROXY_PASS}
+EOF
+
+    chmod 600 "${CREDENTIAL_FILE}"
+
+    # Create systemd service
+    cat > "${SERVICE_FILE}" <<EOF
+[Unit]
+Description=GOST HTTP + SOCKS5 Proxy
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=${BIN_DIR}/gost \\
+    -L http://${PROXY_USER}:${PROXY_PASS}@:${PROXY_PORT} \\
+    -L socks5://${PROXY_USER}:${PROXY_PASS}@:${PROXY_PORT}
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    chmod 644 "${SERVICE_FILE}"
+
+    systemctl daemon-reload
+    systemctl enable gost-proxy.service >/dev/null 2>&1
+    systemctl restart gost-proxy.service
+
+    log "GOST proxy started."
+    log "Listen port : ${PROXY_PORT}"
+    log "Username    : ${PROXY_USER}"
+    log "Password    : ${PROXY_PASS}"
+    log "Credentials : ${CREDENTIAL_FILE}"
+}
+
+
+# ============================================================
+# Enable GOST
+# ============================================================
+
+if [[ "${INSTALL_GOST:-false}" == "true" ]]; then
+    install_gost
+
+    if command -v gost >/dev/null 2>&1 || [[ -x "${BIN_DIR}/gost" ]]; then
+        setup_gost_proxy
+    else
+        soft_err "GOST installation failed, proxy setup skipped."
+    fi
+fi
+
 # ---------- gobuster ----------
 if [[ "${INSTALL_GOBUSTER:-true}" == "true" ]]; then
     log "尝试下载 gobuster 预编译二进制（OJ/gobuster）..."
