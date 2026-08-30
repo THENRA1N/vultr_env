@@ -266,34 +266,66 @@ install_gost() {
 # ============================================================
 
 setup_gost_proxy() {
-    local PROXY_PORT="8964"
+    local HTTP_PORT="8964"
+    local SOCKS5_PORT="8965"
     local PROXY_USER="proxy"
+
     local CREDENTIAL_FILE="/root/.gost_proxy_credentials"
     local SERVICE_FILE="/etc/systemd/system/gost-proxy.service"
 
+    # --------------------------------------------------------
     # Generate random 8-character alphanumeric password
+    # --------------------------------------------------------
     local PROXY_PASS
-    PROXY_PASS="$(tr -dc 'A-Za-z0-9' </dev/urandom | head -c 8)"
 
-    if [[ "${#PROXY_PASS}" -ne 8 ]]; then
-        soft_err "Failed to generate GOST proxy password."
+    PROXY_PASS="$(
+        tr -dc 'A-Za-z0-9' < /dev/urandom |
+        head -c 8
+    )"
+
+    if [[ "${#PROXY_PASS}" != "8" ]]; then
+        soft_err "Failed to generate random proxy password."
         return 1
     fi
 
+    # --------------------------------------------------------
+    # Find GOST binary
+    # --------------------------------------------------------
+    local GOST_BIN=""
+
+    if [[ -x "${BIN_DIR}/gost" ]]; then
+        GOST_BIN="${BIN_DIR}/gost"
+    elif command -v gost >/dev/null 2>&1; then
+        GOST_BIN="$(command -v gost)"
+    else
+        soft_err "GOST binary not found."
+        return 1
+    fi
+
+    log "GOST binary: ${GOST_BIN}"
+
+    # --------------------------------------------------------
     # Save credentials
+    # --------------------------------------------------------
     umask 077
 
     cat > "${CREDENTIAL_FILE}" <<EOF
-GOST HTTP + SOCKS5 Proxy
-Host: $(hostname -I | awk '{print $1}')
-Port: ${PROXY_PORT}
+GOST Proxy
 Username: ${PROXY_USER}
 Password: ${PROXY_PASS}
+
+HTTP Proxy:
+Port: ${HTTP_PORT}
+
+SOCKS5 Proxy:
+Port: ${SOCKS5_PORT}
 EOF
 
     chmod 600 "${CREDENTIAL_FILE}"
 
+    # --------------------------------------------------------
     # Create systemd service
+    # --------------------------------------------------------
     cat > "${SERVICE_FILE}" <<EOF
 [Unit]
 Description=GOST HTTP + SOCKS5 Proxy
@@ -302,10 +334,8 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${BIN_DIR}/gost \\
-    -L http://${PROXY_USER}:${PROXY_PASS}@:${PROXY_PORT} \\
-    -L socks5://${PROXY_USER}:${PROXY_PASS}@:${PROXY_PORT}
-Restart=on-failure
+ExecStart=${GOST_BIN} -L "http://${PROXY_USER}:${PROXY_PASS}@:${HTTP_PORT}" -L "socks5://${PROXY_USER}:${PROXY_PASS}@:${SOCKS5_PORT}"
+Restart=always
 RestartSec=3
 
 [Install]
@@ -314,31 +344,28 @@ EOF
 
     chmod 644 "${SERVICE_FILE}"
 
+    # --------------------------------------------------------
+    # Start service
+    # --------------------------------------------------------
     systemctl daemon-reload
     systemctl enable gost-proxy.service >/dev/null 2>&1
     systemctl restart gost-proxy.service
 
-    log "GOST proxy started."
-    log "Listen port : ${PROXY_PORT}"
-    log "Username    : ${PROXY_USER}"
-    log "Password    : ${PROXY_PASS}"
-    log "Credentials : ${CREDENTIAL_FILE}"
-}
+    sleep 2
 
-
-# ============================================================
-# Enable GOST
-# ============================================================
-
-if [[ "${INSTALL_GOST:-false}" == "true" ]]; then
-    install_gost
-
-    if command -v gost >/dev/null 2>&1 || [[ -x "${BIN_DIR}/gost" ]]; then
-        setup_gost_proxy
+    if systemctl is-active --quiet gost-proxy.service; then
+        log "GOST proxy started successfully."
+        log "HTTP   : 0.0.0.0:${HTTP_PORT}"
+        log "SOCKS5 : 0.0.0.0:${SOCKS5_PORT}"
+        log "User   : ${PROXY_USER}"
+        log "Pass   : ${PROXY_PASS}"
+        log "File   : ${CREDENTIAL_FILE}"
     else
-        soft_err "GOST installation failed, proxy setup skipped."
+        soft_err "GOST service failed to start."
+        journalctl -u gost-proxy.service -n 30 --no-pager
+        return 1
     fi
-fi
+}
 
 # ---------- gobuster ----------
 if [[ "${INSTALL_GOBUSTER:-true}" == "true" ]]; then
