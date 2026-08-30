@@ -23,7 +23,7 @@ GO_BIN="${GOBIN}"
 export GOTOOLCHAIN="${GOTOOLCHAIN:-auto}"
 
 # Non-root user (created if not exists)
-CREATE_USER="true"
+CREATE_USER="false"
 USER_NAME="recon"
 
 # Timezone
