@@ -151,10 +151,7 @@ EOF
 
     # ---------- light SSH hardening ----------
     if [[ -f /etc/ssh/sshd_config ]]; then
-        cp /etc/ssh/sshd_config "/etc/ssh/sshd_config.bak.$(date +%s)"
-        sed -i 's/^#*PermitRootLogin.*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
-        sed -i 's/^#*MaxAuthTries.*/MaxAuthTries 3/' /etc/ssh/sshd_config
-        sed -i 's/^#*ClientAliveInterval.*/ClientAliveInterval 300/' /etc/ssh/sshd_config
+        sed -i 's/^#*ClientAliveInterval.*/ClientAliveInterval 3600/' /etc/ssh/sshd_config
         systemctl restart sshd 2>/dev/null || systemctl restart ssh 2>/dev/null || true
         log "Basic SSH hardening applied"
     fi
