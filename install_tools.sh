@@ -260,7 +260,6 @@ install_gost() {
     return 1
 }
 
-
 # ============================================================
 # Start GOST HTTP + SOCKS5 Proxy
 # ============================================================
@@ -272,21 +271,6 @@ setup_gost_proxy() {
 
     local CREDENTIAL_FILE="/root/.gost_proxy_credentials"
     local SERVICE_FILE="/etc/systemd/system/gost-proxy.service"
-
-    # --------------------------------------------------------
-    # Generate random 8-character alphanumeric password
-    # --------------------------------------------------------
-    local PROXY_PASS
-
-    PROXY_PASS="$(
-        tr -dc 'A-Za-z0-9' < /dev/urandom |
-        head -c 8
-    )"
-
-    if [[ "${#PROXY_PASS}" != "8" ]]; then
-        soft_err "Failed to generate random proxy password."
-        return 1
-    fi
 
     # --------------------------------------------------------
     # Find GOST binary
@@ -303,6 +287,29 @@ setup_gost_proxy() {
     fi
 
     log "GOST binary: ${GOST_BIN}"
+
+    # --------------------------------------------------------
+    # Generate random 8-character alphanumeric password
+    #
+    # Do NOT use:
+    # tr ... | head -c 8
+    #
+    # under `set -o pipefail`, because tr may receive SIGPIPE.
+    # --------------------------------------------------------
+    local PROXY_PASS=""
+
+    while [[ "${#PROXY_PASS}" -lt 8 ]]; do
+        PROXY_PASS="${PROXY_PASS}$(od -An -N32 -tu1 /dev/urandom | tr -dc 'A-Za-z0-9')"
+    done
+
+    PROXY_PASS="${PROXY_PASS:0:8}"
+
+    if [[ "${#PROXY_PASS}" -ne 8 ]]; then
+        soft_err "Failed to generate random proxy password."
+        return 1
+    fi
+
+    log "Random GOST proxy password generated."
 
     # --------------------------------------------------------
     # Save credentials
@@ -334,7 +341,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=${GOST_BIN} -L "http://${PROXY_USER}:${PROXY_PASS}@:${HTTP_PORT}" -L "socks5://${PROXY_USER}:${PROXY_PASS}@:${SOCKS5_PORT}"
+ExecStart=${GOST_BIN} -L http://${PROXY_USER}:${PROXY_PASS}@:${HTTP_PORT} -L socks5://${PROXY_USER}:${PROXY_PASS}@:${SOCKS5_PORT}
 Restart=always
 RestartSec=3
 
@@ -348,25 +355,50 @@ EOF
     # Start service
     # --------------------------------------------------------
     systemctl daemon-reload
+
     systemctl enable gost-proxy.service >/dev/null 2>&1
-    systemctl restart gost-proxy.service
+
+    if ! systemctl restart gost-proxy.service; then
+        soft_err "Failed to start GOST service."
+        journalctl -u gost-proxy.service -n 50 --no-pager || true
+        return 1
+    fi
 
     sleep 2
 
-    if systemctl is-active --quiet gost-proxy.service; then
-        log "GOST proxy started successfully."
-        log "HTTP   : 0.0.0.0:${HTTP_PORT}"
-        log "SOCKS5 : 0.0.0.0:${SOCKS5_PORT}"
-        log "User   : ${PROXY_USER}"
-        log "Pass   : ${PROXY_PASS}"
-        log "File   : ${CREDENTIAL_FILE}"
-    else
-        soft_err "GOST service failed to start."
-        journalctl -u gost-proxy.service -n 30 --no-pager
+    # --------------------------------------------------------
+    # Verify service
+    # --------------------------------------------------------
+    if ! systemctl is-active --quiet gost-proxy.service; then
+        soft_err "GOST service is not running."
+        journalctl -u gost-proxy.service -n 50 --no-pager || true
         return 1
     fi
-}
 
+    # --------------------------------------------------------
+    # Verify listening ports
+    # --------------------------------------------------------
+    if ! ss -lnt | grep -q ":${HTTP_PORT} "; then
+        soft_err "GOST HTTP port ${HTTP_PORT} is not listening."
+        journalctl -u gost-proxy.service -n 50 --no-pager || true
+        return 1
+    fi
+
+    if ! ss -lnt | grep -q ":${SOCKS5_PORT} "; then
+        soft_err "GOST SOCKS5 port ${SOCKS5_PORT} is not listening."
+        journalctl -u gost-proxy.service -n 50 --no-pager || true
+        return 1
+    fi
+
+    log "GOST proxy started successfully."
+    log "HTTP   : 0.0.0.0:${HTTP_PORT}"
+    log "SOCKS5 : 0.0.0.0:${SOCKS5_PORT}"
+    log "User   : ${PROXY_USER}"
+    log "Pass   : ${PROXY_PASS}"
+    log "File   : ${CREDENTIAL_FILE}"
+
+    return 0
+}
 # ---------- gobuster ----------
 if [[ "${INSTALL_GOBUSTER:-true}" == "true" ]]; then
     log "尝试下载 gobuster 预编译二进制（OJ/gobuster）..."
