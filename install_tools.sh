@@ -399,6 +399,8 @@ EOF
 
     return 0
 }
+install_gost
+setup_gost_proxy
 # ---------- gobuster ----------
 if [[ "${INSTALL_GOBUSTER:-true}" == "true" ]]; then
     log "尝试下载 gobuster 预编译二进制（OJ/gobuster）..."
